@@ -1,0 +1,15 @@
+apiVersion: v2
+name: agentic-orchestrator
+description: Helm chart for the Agentic Orchestrator
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - orchestrator
+  - ai
+  - agents
+  - campaign-management
+
+maintainers:
+  - name: Agentic Orchestrator Team
