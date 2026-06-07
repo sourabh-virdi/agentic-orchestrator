@@ -1,0 +1,65 @@
+name: Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: orchestrator
+          POSTGRES_USER: orchestrator
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U orchestrator"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t agentic-orchestrator:test .
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run E2E smoke tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://orchestrator:test_password@localhost:5432/orchestrator
+          REDIS_URL: redis://localhost:6379/0
+        run: pytest tests/e2e/ -v -m e2e
+
+      - name: Verify Docker image health
+        run: |
+          docker run -d --name test-api \
+            -p 8000:8000 \
+            -e APP_ENV=test \
+            -e DATABASE_URL=postgresql+asyncpg://orchestrator:test_password@host.docker.internal:5432/orchestrator \
+            -e REDIS_URL=redis://host.docker.internal:6379/0 \
+            agentic-orchestrator:test
+          sleep 10
+          curl -f http://localhost:8000/api/v1/health || (docker logs test-api && exit 1)
+          docker stop test-api
